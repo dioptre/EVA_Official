@@ -10,7 +10,7 @@ Code repository for the paper:
 
 ## Installation and Setup
 <!-- --- -->
-First, please clone the repo and download the necessary required files via [OneDrive](https://utexas-my.sharepoint.com/:u:/g/personal/hezhen_hu_austin_utexas_edu/ESGMO8k169ZDtkuh44rRUxABE1p5g_4tKpHHqsSU6tjXbA?e=JaPdVv).
+First, please clone the repo and download the necessary required files via [OneDrive](https://utexas-my.sharepoint.com/:u:/g/personal/hh29499_eid_utexas_edu/ESGMO8k169ZDtkuh44rRUxABE1p5g_4tKpHHqsSU6tjXbA?e=QeNKpT).
 Remember to place the checkpoint file in the root path.
 
 Then, follow the commands below to set up necessary environments.
@@ -38,7 +38,7 @@ bash scripts/bug_fix.sh
 
 
 ## Pipeline for a real-world video
-First, process the data as follows (here is a sample video [link](https://utexas-my.sharepoint.com/:u:/g/personal/hezhen_hu_austin_utexas_edu/ERi1KuGI2H9DlCHjFDiQPbcBrgbb85pLY6GG2eCR78bjWw?e=Fh8iRL), video credit to CATIE Center.)
+First, process the data as follows (here is a sample video [link](https://utexas-my.sharepoint.com/:u:/g/personal/hh29499_eid_utexas_edu/ERi1KuGI2H9DlCHjFDiQPbcBrgbb85pLY6GG2eCR78bjWw?e=IAKrRX), video credit to CATIE Center.)
 ```
 010 (video_name)/  
 └── images/  
