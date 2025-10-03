@@ -1,4 +1,6 @@
 import os
+import sys
+PYTHON = sys.executable
 import subprocess
 import argparse
 
@@ -17,13 +19,13 @@ person_list = [args.person_id]
 processes = []
 for i in range(len(person_list)):
     for j in range(10):
-        command = 'CUDA_VISIBLE_DEVICES={} python smplifyx/main.py --config cfg_files/fit_smplx_vposer_x.yaml ' \
+        command = 'CUDA_VISIBLE_DEVICES={} {} smplifyx/main.py --config cfg_files/fit_smplx_vposer_x.yaml ' \
                   '--data_folder {} ' \
                   '--output_folder {}  ' \
                   '--model_folder ../SMPLer-X/common/utils/human_model_files ' \
                   '--vposer_ckpt vposer_v1_0 ' \
                   '--part_segm_fn assets/smplx_parts_segm.pkl --visualize False --split_num {} --cur_num {} ' \
-            .format(str(gpu_idx[0]), args.path, args.out_path, split_num, j+30)
+            .format(str(gpu_idx[0]), PYTHON, args.path, args.out_path, split_num, j+30)
         print(command)
         process = subprocess.Popen(command, shell=True)
         processes.append(process)
