@@ -1,0 +1,165 @@
+# EVA Preprocessing Makefile (Adapted for Gravatar)
+# This adapts EVA's preprocessing pipeline to work with uv instead of conda
+
+SHELL := /bin/bash
+
+# Paths
+GRAVATAR_ROOT := /home/ubuntu/gravatar
+EVA_ROOT := $(GRAVATAR_ROOT)/submodules/EVA_Official
+VENV := $(EVA_ROOT)/.venv_eva/bin/python
+
+# Data paths (can be overridden)
+ROOT_PATH ?= $(GRAVATAR_ROOT)/data/processed/male-3-casual
+OUT_PATH := $(ROOT_PATH)/smplifyx
+
+.PHONY: help install-env test-env stage1 stage2 stage3 preprocess-full
+
+help:
+	@echo "EVA Preprocessing for Gravatar"
+	@echo "================================"
+	@echo ""
+	@echo "Installation:"
+	@echo "  make install-env                 - Create Python 3.8 venv and install all dependencies (run once)"
+	@echo "  make test-env                    - Test EVA environment"
+	@echo ""
+	@echo "Preprocessing:"
+	@echo "  make stage1                      - Run Stage 1: DWPose, Matting, SMPLer-X (parallel)"
+	@echo "  make stage2                      - Run Stage 2: HAMER hand refinement"
+	@echo "  make stage3                      - Run Stage 3: SMPLify-X optimization (parallel)"
+	@echo "  make preprocess-full             - Run all stages sequentially"
+	@echo ""
+	@echo "  make preprocess-subject SUBJECT=male-3-casual   - Process specific subject"
+	@echo ""
+	@echo "Environment Variables:"
+	@echo "  ROOT_PATH=path                   - Input data directory (default: data/processed/male-3-casual)"
+	@echo ""
+	@echo "Output:"
+	@echo "  Creates {subject}/smplx/*.pkl with fitted SMPL-X parameters"
+	@echo ""
+
+# Installation
+install-env:
+	@echo "=========================================="
+	@echo "Installing EVA Environment"
+	@echo "=========================================="
+	@echo "Creating Python 3.8 virtual environment..."
+	@if [ -d "$(EVA_ROOT)/.venv_eva" ]; then \
+		echo "✓ Virtual environment already exists"; \
+	else \
+		uv venv --python 3.8 $(EVA_ROOT)/.venv_eva; \
+	fi
+	@echo ""
+	@echo "Installing PyTorch 1.12.0 + CUDA 11.6..."
+	uv pip install --python $(EVA_ROOT)/.venv_eva \
+		torch==1.12.0+cu116 torchvision==0.13.0+cu116 \
+		--extra-index-url https://download.pytorch.org/whl/cu116
+	@echo ""
+	@echo "Installing pip, setuptools, wheel..."
+	uv pip install --python $(EVA_ROOT)/.venv_eva pip setuptools wheel
+	@echo ""
+	@echo "Installing mmcv-full..."
+	uv pip install --python $(EVA_ROOT)/.venv_eva --no-build-isolation \
+		mmcv-full==1.7.1 \
+		-f https://download.openmmlab.com/mmcv/dist/cu116/torch1.12.0/index.html
+	@echo ""
+	@echo "Installing SMPLer-X requirements..."
+	uv pip install --python $(EVA_ROOT)/.venv_eva --no-build-isolation \
+		-r $(EVA_ROOT)/preprocess/SMPLer-X/requirements.txt
+	@echo ""
+	@echo "Installing transformer utils..."
+	cd $(EVA_ROOT)/preprocess/SMPLer-X/main/transformer_utils && \
+		uv pip install --python $(EVA_ROOT)/.venv_eva -e . --no-build-isolation
+	@echo ""
+	@echo "Installing specific versions for compatibility..."
+	uv pip install --python $(EVA_ROOT)/.venv_eva \
+		setuptools==69.5.1 yapf==0.40.1 numpy==1.23.5
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ EVA Environment Installation Complete!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Test with: make test-env"
+	@echo ""
+
+test-env:
+	@echo "Testing EVA environment..."
+	@$(VENV) -c "import torch; import mmcv; import smplx; print('✓ PyTorch:', torch.__version__); print('✓ mmcv:', mmcv.__version__); print('✓ CUDA:', torch.cuda.is_available())"
+	@echo ""
+	@echo "EVA environment ready!"
+
+# Stage 1: DWPose + Matting + SMPLer-X (parallel)
+stage1:
+	@echo "=========================================="
+	@echo "Stage 1: Initial Processing (parallel)"
+	@echo "=========================================="
+	@echo "Running: DWPose, Matting, SMPLer-X"
+	@echo "ROOT_PATH=$(ROOT_PATH)"
+	@echo ""
+	@mkdir -p $(ROOT_PATH)
+	@# DWPose
+	@echo "Starting DWPose..."
+	@cd $(EVA_ROOT)/preprocess/DWPose/control/annotator && \
+	 ROOT_PATH=$(ROOT_PATH) $(VENV) inference.py --input_path $(ROOT_PATH) &
+	@# Matting
+	@echo "Starting Matting..."
+	@cd $(EVA_ROOT)/preprocess/SemanticGuidedHumanMatting && \
+	 CUDA_VISIBLE_DEVICES=0 ROOT_PATH=$(ROOT_PATH) $(VENV) extract_mask.py \
+	 --input_path $(ROOT_PATH) --pretrained-weight ./pretrained/SGHM-ResNet50.pth &
+	@# SMPLer-X (2 parallel processes)
+	@echo "Starting SMPLer-X..."
+	@cd $(EVA_ROOT)/preprocess/SMPLer-X/main && \
+	 ROOT_PATH=$(ROOT_PATH) $(VENV) script_smplerx1.py --path $(ROOT_PATH) --split_num 2 --gpu_id 0 &
+	@cd $(EVA_ROOT)/preprocess/SMPLer-X/main && \
+	 ROOT_PATH=$(ROOT_PATH) $(VENV) script_smplerx2.py --path $(ROOT_PATH) --split_num 2 --gpu_id 0 &
+	@wait
+	@echo "✓ Stage 1 complete"
+
+# Stage 2: HAMER hand refinement
+stage2:
+	@echo "=========================================="
+	@echo "Stage 2: Hand Refinement (HAMER)"
+	@echo "=========================================="
+	@cd $(EVA_ROOT)/preprocess/hamer && \
+	 ROOT_PATH=$(ROOT_PATH) $(VENV) extract_hamer.py --path $(ROOT_PATH)
+	@echo "✓ Stage 2 complete"
+
+# Stage 3: SMPLify-X final optimization (parallel - 4 processes)
+stage3:
+	@echo "=========================================="
+	@echo "Stage 3: SMPLify-X Optimization (parallel)"
+	@echo "=========================================="
+	@echo "Running 4 parallel SMPLify-X optimization processes..."
+	@cd $(EVA_ROOT)/preprocess/smplify-x-ehuman-in-the-wild && \
+	 ROOT_PATH=$(ROOT_PATH) OUT_PATH=$(OUT_PATH) $(VENV) main_multiview_refine_smplerx.py --path $(ROOT_PATH) --num_split 4 --split 0 &
+	@cd $(EVA_ROOT)/preprocess/smplify-x-ehuman-in-the-wild && \
+	 ROOT_PATH=$(ROOT_PATH) OUT_PATH=$(OUT_PATH) $(VENV) main_multiview_refine_smplerx.py --path $(ROOT_PATH) --num_split 4 --split 1 &
+	@cd $(EVA_ROOT)/preprocess/smplify-x-ehuman-in-the-wild && \
+	 ROOT_PATH=$(ROOT_PATH) OUT_PATH=$(OUT_PATH) $(VENV) main_multiview_refine_smplerx.py --path $(ROOT_PATH) --num_split 4 --split 2 &
+	@cd $(EVA_ROOT)/preprocess/smplify-x-ehuman-in-the-wild && \
+	 ROOT_PATH=$(ROOT_PATH) OUT_PATH=$(OUT_PATH) $(VENV) main_multiview_refine_smplerx.py --path $(ROOT_PATH) --num_split 4 --split 3 &
+	@wait
+	@echo "✓ Stage 3 complete"
+
+# Run all stages
+preprocess-full: stage1 stage2 stage3
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ EVA Preprocessing Complete!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Output: $(ROOT_PATH)/smplx/*.pkl"
+	@echo ""
+	@echo "Next step:"
+	@echo "  cd $(GRAVATAR_ROOT)"
+	@echo "  make train-one"
+	@echo ""
+
+# Process specific subject from Gravatar data
+preprocess-subject:
+	@if [ -z "$(SUBJECT)" ]; then \
+		echo "Error: Please specify SUBJECT=name"; \
+		echo "Example: make preprocess-subject SUBJECT=male-3-casual"; \
+		exit 1; \
+	fi
+	@echo "Processing subject: $(SUBJECT)"
+	@$(MAKE) preprocess-full ROOT_PATH=$(GRAVATAR_ROOT)/data/processed/$(SUBJECT)
