@@ -87,7 +87,10 @@ def main():
         else:
             continue
 
+        # Try both 6-digit and 4-digit formats (Gravatar compatibility)
         img_path = os.path.join(args.img_path, f'{int(frame):06d}.png')
+        if not os.path.exists(img_path):
+            img_path = os.path.join(args.img_path, f'{int(frame)-1:04d}.png')
         if not os.path.exists(img_path):
             continue
 
@@ -184,7 +187,8 @@ def main():
             os.makedirs(save_path_smplx, exist_ok= True)
             # npz_path = os.path.join(save_path_smplx, f'{frame:05}_{bbox_id}.npz')
             # np.savez(npz_path, **smplx_pred)
-            pkl_path = os.path.join(save_path_smplx, f'{frame:06}.pkl')
+            # Use 4-digit format for Gravatar compatibility
+            pkl_path = os.path.join(save_path_smplx, f'{frame-1:04d}.pkl')
             with open(pkl_path, 'wb') as f:
                 pickle.dump(smplx_pred, f)
 

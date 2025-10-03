@@ -1,0 +1,4 @@
+[tool.uv.extra-build-dependencies]
+# Extra build dependencies for packages that don't declare them properly
+chumpy = ["pip", "numpy"]
+detectron2 = ["pip", "torch", "torchvision"]
